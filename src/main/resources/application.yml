@@ -1,0 +1,45 @@
+server:
+  port: 8000
+
+spring:
+  application:
+    name: management
+
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://101.37.85.93:3306/myt_tk?useUnicode=true&useSSL=false&characterEncoding=utf8&serverTimezone=GMT%2b8&allowPublicKeyRetrieval=true
+    username: myt_tk
+    password: iaL2n4KwycJcPDT8
+
+
+  data:
+    redis:
+      host: 101.37.85.93
+      port: 6379
+      password: zzz@12580.
+      timeout: 30000
+
+
+
+mybatis-plus:
+  mapper-locations: classpath:mybatis/**/*Mapper
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+#    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+
+
+aws:
+  callback:
+#    aws lightsail 启动成功后回调地址，ip端口根据服务器自行修改，建议使用国外服务器
+    awsBaseUrl: http://ec2-54-202-25-91.us-west-2.compute.amazonaws.com:18080/amazon/api/aws/ip/callback
+
+enable_cors: true
+
+knife4j:
+  enable: true
+
+
+
+

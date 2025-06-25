@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AWS Instances Management</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <style>
+        body {
+            background-color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            margin: 0; /* 移除默认外边距 */
+            overflow: hidden; /* 隐藏溢出内容 */
+        }
+        .container {
+            padding: 20px;
+            position: relative;
+            height: 100vh; /* 设置容器高度为视口高度 */
+            overflow: hidden; /* 隐藏溢出内容 */
+        }
+        .filter-section { margin-bottom: 20px; }
+        .pagination-container { margin-top: 20px; text-align: right; }
+        .el-table .cell {
+            text-align: center;
+        }
+        .group-dropdown {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            margin-right: 50px;
+        }
+    </style>
+    <script>
+        // If this page is not loaded inside an iframe, redirect to the main layout page.
+        if (window.top === window.self) {
+            window.location.href = '/aws/';
+        }
+    </script>
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- 新增下拉菜单 -->
+        <div class="group-dropdown">
+            <el-dropdown trigger="click">
+                <span class="el-dropdown-link">
+                    地区统计({{allInstanceCount}})
+                    <i class="el-icon-arrow-down el-icon--right"></i>
+                </span>
+                <el-dropdown-menu slot="dropdown">
+                    <el-dropdown-item v-for="item in group" :key="item.region">
+                        {{ item.regionChineseName }}: {{ item.count }}
+                    </el-dropdown-item>
+                </el-dropdown-menu>
+            </el-dropdown>
+        </div>
+
+        <div class="filter-section">
+
+            <el-input
+                    v-model="search"
+                    placeholder="请输入搜索内容"
+                    size="small"
+                    style="width: 220px; margin-right: 10px;margin-left: 10px;"
+                    @keyup.enter.native="handleSearch"
+                    clearable
+            ></el-input>
+            <el-button type="primary" size="small" @click="handleSearch">搜索</el-button>
+        </div>
+
+        <!-- 绑定动态高度 -->
+        <el-table :data="instances" border stripe :height="tableHeight">
+            <el-table-column type="index" label="序号" width="60"></el-table-column>
+            <el-table-column label="账号" show-overflow-tooltip>
+                <template slot-scope="scope">
+                    {{ formatLoginName(scope.row) }}
+                </template>
+            </el-table-column>
+            <el-table-column prop="instanceName" label="实例名称" show-overflow-tooltip></el-table-column>
+            <el-table-column prop="ip" label="IP"></el-table-column>
+            <el-table-column prop="domainInfo" label="域名" show-overflow-tooltip></el-table-column>
+            <el-table-column prop="staDesc" label="状态"></el-table-column>
+            <el-table-column prop="regionChineseName" label="地区"></el-table-column>
+            <el-table-column prop="createTimeStr" label="创建时间" width="170"></el-table-column>
+            <el-table-column label="操作" width="250">
+                <template slot-scope="scope">
+                    <el-button size="mini" @click="handleChange(scope.row)">更换ip</el-button>
+                    <el-button size="mini" type="danger" @click="handleDelete(scope.row.instanceName)">删除</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+
+        <!-- Pagination -->
+        <div class="pagination-container">
+            <el-pagination
+                    @current-change="handlePageChange"
+                    @size-change="handleSizeChange"
+                    :current-page="pagination.currentPage"
+                    :page-size="pagination.pageSize"
+                    :page-sizes="[10, 20, 30, 50]"
+                    layout="total, sizes, prev, pager, next"
+                    :total="pagination.total">
+            </el-pagination>
+        </div>
+
+        <!-- Dialog for Edit (assuming you have one) -->
+        <!-- ... your edit dialog here ... -->
+    </div>
+
+    <script src="https://unpkg.com/vue@2.6.14/dist/vue.min.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    instances: [],
+                    instanceType: '0',
+                    pagination: {
+                        currentPage: 1,
+                        pageSize: 10,
+                        total: 0
+                    },
+                    awsKeys: [],
+                    search: '',
+                    group: [],
+                    // 初始化表格高度
+                    tableHeight: 0
+                }
+            },
+            created() {
+                Auth.checkAuth();
+                this.loadData();
+                this.loadAwsKeys();
+                // 页面加载时计算表格高度
+                this.calculateTableHeight();
+                // 监听窗口大小变化事件
+                window.addEventListener('resize', this.calculateTableHeight);
+            },
+            beforeDestroy() {
+                // 组件销毁前移除事件监听，避免内存泄漏
+                window.removeEventListener('resize', this.calculateTableHeight);
+            },
+            computed: {
+                formatLoginName: function() {
+                    return function(row) {
+                        const foundKey = this.awsKeys.find(i => i.key === row.awsKeyConfigId);
+                        return foundKey ? foundKey.value : '';
+                    };
+                },
+                allInstanceCount: function() {
+                    return this.group.reduce((total, item) => total + item.count, 0);
+                }
+            },
+            methods: {
+                calculateTableHeight() {
+                    // 获取筛选区域元素
+                    const filterSection = document.querySelector('.filter-section');
+                    // 获取分页区域元素
+                    const paginationContainer = document.querySelector('.pagination-container');
+                    // 获取下拉菜单元素
+                    const groupDropdown = document.querySelector('.group-dropdown');
+                    // 计算筛选区域高度
+                    const filterHeight = filterSection ? filterSection.offsetHeight : 0;
+                    // 计算分页区域高度
+                    const paginationHeight = paginationContainer ? paginationContainer.offsetHeight : 0;
+                    // 计算下拉菜单高度
+                    const dropdownHeight = groupDropdown ? groupDropdown.offsetHeight : 0;
+                    // 计算容器内边距
+                    const containerPadding = 100; // 假设上下内边距各 20px
+                    // 计算表格高度，用窗口高度减去其他元素高度和容器内边距
+                    this.tableHeight = window.innerHeight - filterHeight - paginationHeight - dropdownHeight - containerPadding;
+                },
+                handleSearch() {
+                    this.pagination.currentPage = 1;
+                    this.loadData();
+                },
+                handleFilterChange() {
+                    this.pagination.currentPage = 1;
+                    this.loadData();
+                },
+                handlePageChange(newPage) {
+                    this.pagination.currentPage = newPage;
+                    this.loadData();
+                },
+                handleSizeChange(newSize) {
+                    // 更新当前的每页显示条数
+                    this.pagination.pageSize = newSize;
+                    // 切换每页条数时，将当前页码重置为第一页
+                    this.pagination.currentPage = 1;
+                    // 重新加载数据
+                    this.loadData();
+                },
+                loadData() {
+                    apiClient.post('/amazon/api/aws/list',
+                        {
+                            current: this.pagination.currentPage,
+                            size: this.pagination.pageSize,
+                            instanceType: this.instanceType,
+                            search: this.search
+                        }
+                    ).then(response => {
+                        if (response.data.status === 200) {
+                            this.instances = response.data.data.records || [];
+                            this.pagination.total = response.data.data.total || 0;
+                            this.awsKeys = response.data.data.awsKeys || [];
+                        } else {
+                            this.$message.error(response.data.msg || '获取数据失败');
+                        }
+                    }).catch(error => {
+                        this.$message.error('请求失败');
+                        console.error(error);
+                    });
+                    this.loadGroup()
+                },
+                loadAwsKeys() {
+                    apiClient.post('/amazon/api/aws/key/list').then(response => {
+                        if (response.data.status === 200) {
+                            this.awsKeys = response.data.data || [];
+                        }
+                    }).catch(error => {
+                        console.error('Failed to load AWS keys:', error);
+                    });
+                },
+                loadGroup() {
+                    apiClient.get(`/amazon/api/aws/groupByRegion?instanceType=${this.instanceType}`).then(response => {
+                        if (response.data.status === 200) {
+                            this.group = response.data.data || [];
+                        }
+                    }).catch(error => {
+                        console.error('Failed to load AWS keys:', error);
+                    });
+                },
+                handleChange(row) {
+                    // 使用 Element UI 的 $confirm 方法弹出确认对话框
+                    this.$confirm('更换 IP 会销毁实例并创建新实例，确定要继续吗？', '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        // 用户点击确认后，调用后端更换 IP 接口
+                        apiClient.post(`/amazon/api/aws/changeIp?instanceName=${row.instanceName}`)
+                            .then(response => {
+                                if (response.data.status === 200) {
+                                    this.$message.success('IP 更换成功');
+                                    this.loadData(); // 重新加载数据
+                                } else {
+                                    this.$message.error(response.data.msg || 'IP 更换失败');
+                                }
+                            })
+                            .catch(error => {
+                                this.$message.error('请求失败');
+                                console.error(error);
+                            });
+                    }).catch(() => {
+                        // 用户点击取消，不做任何操作
+                        this.$message.info('已取消操作');
+                    });
+                },
+                handleDelete(instanceName) {
+                    apiClient.delete(`/amazon/api/aws/del?instanceName=${instanceName}`)
+                        .then(() => this.loadData())
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AWS密钥管理</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <style>
+        body { background-color: #fff; font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif; }
+        .container { padding: 20px; }
+        .operation-buttons { margin-bottom: 20px; }
+
+    </style>
+    <script>
+        // If this page is not loaded inside an iframe, redirect to the main layout page.
+        if (window.top === window.self) {
+            window.location.href = '/aws/';
+        }
+    </script>
+</head>
+<body>
+    <div id="app" class="container">
+        <div class="operation-buttons">
+            <el-button type="primary" size="small" @click="dialogVisible = true">新增密钥</el-button>
+        </div>
+        <!-- 设置 cell-style 和 header-cell-style 属性 -->
+        <el-table
+            :data="keys"
+            border
+            stripe
+            :cell-style="{ textAlign: 'center' }"
+            :header-cell-style="{ textAlign: 'center' }"
+        >
+            <el-table-column prop="loginName" label="账号"></el-table-column>
+            <el-table-column prop="accessKey" label="accessKey"></el-table-column>
+            <el-table-column label="secretKey" prop="secretKey"></el-table-column>
+            <el-table-column label="操作" width="150">
+                <template slot-scope="scope">
+                    <el-button size="mini" @click="handleEdit(scope.row)">编辑</el-button>
+                    <el-button size="mini" type="danger" @click="handleDelete(scope.row.id)">删除</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+
+        <!-- Dialog for Add/Edit -->
+        <el-dialog
+                :title="form.id ? '编辑密钥' : '新增密钥'"
+                :visible.sync="dialogVisible"
+                width="30%"
+                @close="resetForm">
+            <el-form :model="form" label-width="120px" ref="form">
+                <el-form-item label="账号" prop="账号">
+                    <el-input v-model="form.loginName"></el-input>
+                </el-form-item>
+                <el-form-item label="accessKey" prop="accessKey">
+                    <el-input v-model="form.accessKey"></el-input>
+                </el-form-item>
+                <el-form-item label="secretKey" prop="secretKey">
+                    <el-input v-model="form.secretKey"></el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button size="small" @click="dialogVisible = false">取消</el-button>
+                <el-button size="small" type="primary" @click="handleSubmit">确定</el-button>
+            </span>
+        </el-dialog>
+    </div>
+
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    keys: [],
+                    loading: false,
+                    currentPage: 1,
+                    pageSize: 100,
+                    total: 0,
+                    dialogVisible: false,
+                    dialogTitle: '添加AWS密钥',
+                    submitLoading: false,
+                    form: {
+                        id: null,
+                        accessKey: '',
+                        secretKey: '',
+                        loginName: '',
+                    },
+                    rules: {
+                        accessKey: [ { required: true, message: '请输入Access Key', trigger: 'blur' } ],
+                        secretKey: [ { required: true, message: '请输入Secret Key', trigger: 'blur' } ],
+                        loginName: [ { required: true, message: '请输入loginName', trigger: 'blur' } ]
+                    }
+                }
+            },
+            computed: {
+                pagedKeys() {
+                    const start = (this.currentPage - 1) * this.pageSize;
+                    const end = start + this.pageSize;
+                    return this.keys.slice(start, end);
+                }
+            },
+            created() {
+                Auth.checkAuth();
+                this.loadData();
+            },
+            methods: {
+                loadData() {
+                    this.loading = true;
+                    apiClient.post('/amazon/api/aws/key/list')
+                        .then(response => {
+                            if (response.data.status === 200) {
+                                this.keys = response.data.data || [];
+                                this.total = this.keys.length;
+                            } else {
+                                this.$message.error(response.data.msg || '获取数据失败');
+                            }
+                        })
+                        .catch(error => this.$message.error('请求失败'))
+                        .finally(() => { this.loading = false; });
+                },
+                refreshData() { this.loadData(); },
+                handleEdit(row) {
+                    this.dialogTitle = '编辑AWS密钥';
+                    this.form = { ...row };
+                    this.dialogVisible = true;
+                    this.$nextTick(() => { this.$refs.form.clearValidate(); });
+                },
+                handleDelete(id) {
+                    this.$confirm('确定要删除这个密钥吗？', '提示', { type: 'warning' })
+                        .then(() => {
+                            apiClient.post(`/amazon/api/aws/key/del/${id}`)
+                                .then(response => {
+                                    if (response.data.status === 200) {
+                                        this.$message.success('删除成功');
+                                        this.loadData();
+                                    } else {
+                                        this.$message.error(response.data.msg || '删除失败');
+                                    }
+                                })
+                                .catch(error => this.$message.error('请求失败'));
+                        });
+                },
+                handleSubmit() {
+                    this.$refs.form.validate((valid) => {
+                        if (valid) {
+                            this.submitLoading = true;
+                            const isUpdate = !!this.form.id;
+                            const url = isUpdate ? '/amazon/api/aws/key/update' : '/amazon/api/aws/key/add';
+                            const method = isUpdate ? 'put' : 'post';
+
+                            apiClient({ method, url, data: this.form })
+                                .then(response => {
+                                    if (response.data.status === 200) {
+                                        this.$message.success(isUpdate ? '更新成功' : '添加成功');
+                                        this.dialogVisible = false;
+                                        this.loadData();
+                                    } else {
+                                        this.$message.error(response.data.msg || '操作失败');
+                                    }
+                                })
+                                .catch(error => this.$message.error('请求失败'))
+                                .finally(() => { this.submitLoading = false; });
+                        }
+                    });
+                },
+                resetForm() {
+                    this.form = { id: null, accessKeyId: '', accessKeySecret: '', region: '', remark: '' };
+                    this.$nextTick(() => {
+                        if (this.$refs.form) {
+                            this.$refs.form.clearValidate();
+                        }
+                    });
+                },
+                handleSizeChange(val) {
+                    this.pageSize = val;
+                    this.currentPage = 1;
+                },
+                handleCurrentChange(val) {
+                    this.currentPage = val;
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

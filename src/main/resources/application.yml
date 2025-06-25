@@ -8,8 +8,8 @@ spring:
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/myt_tk?useUnicode=true&useSSL=false&characterEncoding=utf8&serverTimezone=GMT%2b8&allowPublicKeyRetrieval=true
-    username: myt_tk
+    url: jdbc:mysql://127.0.0.1:3306/aws_light?useUnicode=true&useSSL=false&characterEncoding=utf8&serverTimezone=GMT%2b8&allowPublicKeyRetrieval=true
+    username: aws_light
     password: iaL2n4KwycJcPDT8
 
 

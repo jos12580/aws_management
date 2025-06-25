@@ -81,7 +81,7 @@
 数据库初始化：
 - 登录 MySQL 数据库，创建新的数据库：
 ```bash
-CREATE DATABASE myt_tk;
+CREATE DATABASE aws_light;
 ```
 - 执行 mysql.sql 脚本初始化数据库表结构和数据：
 ```bash
@@ -90,11 +90,11 @@ mysql -u [数据库用户名] -p [数据库名] < mysql.sql
 ### Docker 部署
 - 构建 Docker 镜像：
 ```bash
-docker build -t myt_tk .
+docker build -t aws_light .
 ```
 - 运行 Docker 容器：
 ```bash
-docker run -p 8080:8080 myt_tk
+docker run -p 8080:8080 aws_light
 ```
 ### API 文档
 项目使用 SpringDoc OpenAPI 和 Knife4j 生成 API 文档，启动项目后，可访问以下地址查看：
